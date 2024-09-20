@@ -139,11 +139,11 @@ def create_article():
         future_articles=future_articles_with_author
     )
 
-def save_articles():
+def save_articles(num):
     saved_directory = f"{results_directory_name}/{crop.eng}"
     os.makedirs(saved_directory, exist_ok=True)
 
-    saved_file_name = f"{saved_directory}/{aspect.eng}.txt"
+    saved_file_name = f"{saved_directory}/{aspect.eng}_{num}.txt"
 
     articles_dict = [article.dict() for article in articles]
 
@@ -151,8 +151,8 @@ def save_articles():
         json_string = json.dumps(articles_dict, ensure_ascii=False, indent=4)
         file.write(json_string)
 
-def is_existed_articles():
-    file_name = f"{results_directory_name}/{crop.eng}/{aspect.eng}.txt"
+def is_existed_articles(num):
+    file_name = f"{results_directory_name}/{crop.eng}/{aspect.eng}_{num}.txt"
 
     return os.path.exists(file_name)
 
@@ -178,10 +178,6 @@ if __name__ == "__main__":
 
     for crop in crops:
         for aspect in aspects:
-            if is_existed_articles():
-                print(f"pass {crop.eng}: {aspect.eng}")
-                continue
-
             print(f"start {crop.eng}: {aspect.eng}")
 
             redis_session_id = create_redis_session_id()
@@ -194,13 +190,23 @@ if __name__ == "__main__":
             articles = []
 
             # create articles
-            for count in range(1, article_count + 1):
-                crop_article, future_articles = create_crop_future_articles()
+            last_count = article_count // 10
+            for num in range(0, last_count):
+                if is_existed_articles(num):
+                    print(f"pass {crop.eng}: {aspect.eng} - {num}")
+                    continue
 
-                articles.append(create_article())
+                articles = []
 
-                print(f"[{count}] {redis_session_id}: {crop_article["title"]}")
-            
-            save_articles()
+                start = num * 10 + 1
+                end = num * 10 + 11
+                for count in range(start, end):
+                    crop_article, future_articles = create_crop_future_articles()
 
-            print(f"success saving {crop.eng}/{aspect.eng}.txt")
+                    articles.append(create_article())
+
+                    print(f"[{count}] {redis_session_id}: {crop_article["title"]}")
+                
+                save_articles(num)
+
+                print(f"success saving {crop.eng}/{aspect.eng}_{num}.txt")
