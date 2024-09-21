@@ -97,7 +97,7 @@ def create_crop_future_articles():
     return crop_article, future_articles
 
 def create_crop_article():
-    crop_human_messages = create_crop_human_messages(crop_article_prompt_template, crop.kor, aspect.kor)
+    crop_human_messages = create_crop_human_messages(crop_article_prompt_template, crop.kor, aspect.kor, polarity)
     crop_article_result = chain_with_history.invoke(crop_human_messages)
 
     return crop_article_result["output_message"]
@@ -191,6 +191,7 @@ if __name__ == "__main__":
 
             # create articles
             last_count = article_count // 10
+            mid_count = article_count // 2
             for num in range(0, last_count):
                 if is_existed_articles(num):
                     print(f"pass {crop.eng}: {aspect.eng} - {num}")
@@ -201,6 +202,10 @@ if __name__ == "__main__":
                 start = num * 10 + 1
                 end = num * 10 + 11
                 for count in range(start, end):
+                    polarity = "긍정적"
+                    if count > mid_count:
+                        polarity = "부정적"
+
                     crop_article, future_articles = create_crop_future_articles()
 
                     articles.append(create_article())

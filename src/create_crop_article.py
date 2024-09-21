@@ -34,12 +34,12 @@ def create_prompt(template):
     return prompt
 
 # create output parser & human messages
-def create_human_messages(template, crop, aspect):
+def create_human_messages(template, crop, aspect, polarity):
     prompt = create_prompt(template)
     parser = PydanticOutputParser(pydantic_object=CropArticle)
 
     human_messages = [
-        HumanMessage(content=prompt.format(crop=crop, aspect=aspect)),
+        HumanMessage(content=prompt.format(crop=crop, aspect=aspect, polarity=polarity)),
         HumanMessage(content=parser.get_format_instructions())
     ]
 
