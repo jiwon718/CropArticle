@@ -1,5 +1,5 @@
 양배추 cabbage
-배추 korean_cabage
+배추 korean_cabbage
 감자 potato
 고구마 sweat_potato
 당근 carrot
