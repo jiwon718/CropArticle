@@ -244,7 +244,7 @@ if __name__ == "__main__":
                         articles.append(create_article())
                     except Exception as e:
                         print("An error occurred during article generation, retrying!")
-                        num -= 1
+                        count -= 1
 
                     print(f"[{count}] {redis_session_id}: {crop_article["title"]}")
                 
