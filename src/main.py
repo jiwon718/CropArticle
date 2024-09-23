@@ -1,5 +1,6 @@
 import random
 import json
+import time
 import os
 
 from dotenv import load_dotenv
@@ -46,6 +47,7 @@ class Article(BaseModel):
 def set_env():
     global model_name, article_count
     global crop_prompt_file_name, future_prompt_file_name, aspects_file_name, crops_file_name, authors_file_name, results_directory_name
+    global generation_time, stop_time
 
     load_dotenv()
 
@@ -57,6 +59,8 @@ def set_env():
     crops_file_name = os.getenv("CROPS_FILE_NAME")
     authors_file_name = os.getenv("AUTHORS_FILE_NAME")
     results_directory_name = os.getenv("RESULTS_DIRECTORY_NAME")
+    generation_time = int(os.getenv("GENERATION_TIME"))
+    stop_time = int(os.getenv("STOP_TIME"))
 
 def load_prompt(file_name):
     with open(file_name, "r", encoding="utf-8") as file:
@@ -219,6 +223,7 @@ if __name__ == "__main__":
             # create articles
             last_count = article_count // 10
             mid_count = article_count // 2
+            cur_time = 0
             for num in range(0, last_count):
                 if is_existed_articles(num):
                     print(f"pass {crop.eng}: {aspect.eng} - {num}")
@@ -246,3 +251,11 @@ if __name__ == "__main__":
                 save_articles(num)
 
                 print(f"success saving {crop.eng}/{aspect.eng}_{num}.txt")
+
+                cur_time += 1
+                if cur_time == generation_time:
+                    print(f"stop for {stop_time} sec")
+                    time.sleep(stop_time)
+                    print(f"restart")
+
+                    cur_time = 0
