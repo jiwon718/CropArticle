@@ -22,6 +22,11 @@ class Item():
         self.kor = kor
         self.eng = eng
 
+class Aspect(Item):
+    def __init__(self, kor, eng, description):
+        super().__init__(kor, eng)
+        self.description = description
+
 class FutureArticleWithAuthor(BaseModel):
     title: str
     body: str
@@ -67,8 +72,8 @@ def load_authors():
 
             authors.append(line)
 
-def load_items(file_name, items):
-    with open(file_name, "r", encoding="utf-8") as file:
+def load_crops():
+    with open(crops_file_name, "r", encoding="utf-8") as file:
         while True:
             line = file.readline().strip()
             
@@ -76,7 +81,29 @@ def load_items(file_name, items):
                 break
             
             kor, eng = line.split()
-            items.append(Item(kor, eng))
+            crops.append(Item(kor, eng))
+
+def load_aspects():
+    with open(aspects_file_name, "r", encoding="utf-8") as file:
+        while True:
+            line = file.readline().strip()
+
+            if not line:
+                break
+            
+            kor, eng = line.split()
+
+            description = ""
+            while True:
+                line = file.readline().strip()
+
+                if not line:
+                    break
+                
+                description += line + "\n"
+            
+            aspects.append(Aspect(kor, eng, description))
+
 
 def create_redis_session_id():
     return crop.eng + "_" + aspect.eng
@@ -97,13 +124,13 @@ def create_crop_future_articles():
     return crop_article, future_articles
 
 def create_crop_article():
-    crop_human_messages = create_crop_human_messages(crop_article_prompt_template, crop.kor, aspect.kor, polarity)
+    crop_human_messages = create_crop_human_messages(crop_article_prompt_template, crop, aspect, polarity)
     crop_article_result = chain_with_history.invoke(crop_human_messages)
 
     return crop_article_result["output_message"]
 
 def create_future_articles(crop_article):
-    future_human_messages = create_future_human_messages(future_article_prompt_template, crop.kor, crop_article["body"])
+    future_human_messages = create_future_human_messages(future_article_prompt_template, crop, crop_article["body"])
     future_articles_result = llm.invoke(future_human_messages)
 
     return future_articles_result
@@ -166,11 +193,11 @@ if __name__ == "__main__":
     authors = []
     load_authors()
 
-    aspects = []
-    load_items(aspects_file_name, aspects)
-
     crops = []
-    load_items(crops_file_name, crops)
+    load_crops()
+
+    aspects = []
+    load_aspects()
 
     # create client
     llm = Ollama(model=model_name)
@@ -206,9 +233,13 @@ if __name__ == "__main__":
                     if count > mid_count:
                         polarity = "부정적"
 
-                    crop_article, future_articles = create_crop_future_articles()
+                    try:
+                        crop_article, future_articles = create_crop_future_articles()
 
-                    articles.append(create_article())
+                        articles.append(create_article())
+                    except Exception as e:
+                        print("An error occurred during article generation, retrying!")
+                        num -= 1
 
                     print(f"[{count}] {redis_session_id}: {crop_article["title"]}")
                 
