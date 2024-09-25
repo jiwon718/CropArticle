@@ -38,6 +38,7 @@ class FutureArticleWithAuthor(BaseModel):
 
 class Article(BaseModel):
     crop: str
+    aspect: str
     title: str
     body: str
     author: str
@@ -164,6 +165,7 @@ def create_article():
 
     return Article(
         crop=crop.kor,
+        aspect=aspect.kor,
         title=crop_article["title"],
         body=crop_article["body"],
         author=random.choice(authors),
