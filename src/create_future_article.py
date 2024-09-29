@@ -84,12 +84,12 @@ def create_parser():
     return PydanticOutputParser(pydantic_object=FutureArticles)
 
 # create output parser & human messages
-def create_human_messages(template, crop, article_body):
+def create_human_messages(template, crop, polarity, article_body):
     prompt = create_prompt(template)
     parser = create_parser()
 
     human_messages = [
-        HumanMessage(content=prompt.format(crop=crop, article_body=article_body)),
+        HumanMessage(content=prompt.format(crop=crop, polarity=polarity, article_body=article_body)),
         HumanMessage(content=parser.get_format_instructions())
     ]
 

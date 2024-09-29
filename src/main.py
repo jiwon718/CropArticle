@@ -135,7 +135,7 @@ def create_crop_article():
     return crop_article_result["output_message"]
 
 def create_future_articles(crop_article):
-    future_human_messages = create_future_human_messages(future_article_prompt_template, crop, crop_article["body"])
+    future_human_messages = create_future_human_messages(future_article_prompt_template, crop, future_polarity, crop_article["body"])
     future_articles_result = llm.invoke(future_human_messages)
 
     return future_articles_result
@@ -236,9 +236,11 @@ if __name__ == "__main__":
                 start = num * 10 + 1
                 end = num * 10 + 11
                 for count in range(start, end):
-                    polarity = "긍정적"
+                    polarity = "가격이 증가하는"
+                    future_polarity = "급격한 증가"
                     if count > mid_count:
-                        polarity = "부정적"
+                        polarity = "가격이 감소하는"
+                        future_polarity = "급격한 감소"
 
                     try:
                         crop_article, future_articles = create_crop_future_articles()
