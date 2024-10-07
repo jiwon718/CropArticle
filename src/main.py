@@ -5,13 +5,8 @@ import os
 
 from dotenv import load_dotenv
 
-from langchain.schema import HumanMessage
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
-from langchain_core.chat_history import BaseChatMessageHistory
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_core.runnables import RunnableParallel
-from langchain_redis import RedisChatMessageHistory
 from pydantic import BaseModel
 from typing import List
 
@@ -120,33 +115,18 @@ def load_aspects():
             aspects.append(Aspect(kor, eng, description))
 
 
-def create_redis_session_id():
+def create_crop_article_id():
     return crop.eng + "_" + aspect.eng
-
-def get_redis_history(redis_session_id) -> BaseChatMessageHistory:
-    return RedisChatMessageHistory(
-        session_id=redis_session_id,
-        redis_url="redis://localhost:6379/0"
-    )
-
-def create_crop_future_articles():
-    crop_article_result = create_crop_article()
-    crop_article = get_crop_article(crop_article_result)
-
-    future_articles_result = create_future_articles(crop_article)
-    future_articles = get_future_articles(future_articles_result)
-
-    return crop_article, future_articles
 
 def create_crop_article():
     crop_human_messages = create_crop_human_messages(crop_article_prompt_template, crop, aspect, polarity)
-    crop_article_result = chain_with_history.invoke(crop_human_messages)
+    crop_article_result = llm.invoke(crop_human_messages)
 
     return crop_article_result.content
 
 def create_future_articles(crop_article):
     future_human_messages = create_future_human_messages(future_article_prompt_template, crop, future_polarity, crop_article["body"])
-    future_articles_result = chain_with_history.invoke(future_human_messages)
+    future_articles_result = llm.invoke(future_human_messages)
 
     return future_articles_result.content
 
@@ -251,13 +231,7 @@ if __name__ == "__main__":
             crop_article_prompt_template = load_prompt(crop_prompt_file_name)
             future_article_prompt_template = load_prompt(future_prompt_file_name)
 
-            crop_redis_session_id = create_redis_session_id()
-            future_redis_session_id = crop_redis_session_id + "_future"
-
-            chain_with_history = RunnableWithMessageHistory(
-                llm,
-                get_redis_history
-            )
+            crop_article_id = create_crop_article_id()
 
             # create articles
             last_count = article_count // 10
@@ -284,10 +258,6 @@ if __name__ == "__main__":
                         crop_article = get_crop_article(crop_article_result)
 
                         crop_articles.append(crop_article)
-
-                        # modify crop aritcle prompt
-                        if count > 1:
-                            crop_article_prompt_template = load_prompt(retried_crop_prompt_file_name)
                         
                         count += 1
                     except Exception as e:
@@ -310,11 +280,7 @@ if __name__ == "__main__":
 
                         articles.append(create_article(crop_article, future_articles))
                         
-                        print(f"[{count}] {crop_redis_session_id}: {crop_article["title"]}")
-
-                        # modify future article prompt
-                        if count > 1:
-                            future_article_prompt_template = load_prompt(retried_future_prompt_file_name)
+                        print(f"[{count}] {crop_article_id}: {crop_article["title"]}")
 
                         count += 1
                     except Exception as e:

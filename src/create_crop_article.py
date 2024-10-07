@@ -27,7 +27,8 @@ def create_prompt(template):
         template = template,
         input_variables=[
             "crop",
-            "aspect"
+            "aspect",
+            "polarity"
         ]
     )
 
