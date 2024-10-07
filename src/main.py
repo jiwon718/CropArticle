@@ -6,12 +6,13 @@ import os
 from dotenv import load_dotenv
 
 from langchain.schema import HumanMessage
-from langchain_community.llms import Ollama
+from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
+from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.runnables import RunnableParallel
-from langchain_core.pydantic_v1 import BaseModel
 from langchain_redis import RedisChatMessageHistory
+from pydantic import BaseModel
 from typing import List
 
 from create_crop_article import CropArticle, create_human_messages as create_crop_human_messages
@@ -28,13 +29,18 @@ class Aspect(Item):
         super().__init__(kor, eng)
         self.description = description
 
+class SubCropWithId(BaseModel):
+    id: str
+    name: str
+    change_rate: float
+
 class FutureArticleWithAuthor(BaseModel):
     title: str
     body: str
     author: str
     change_rate: float
     spawn_rate: float
-    sub_crops: List[SubCrop]
+    sub_crops: List[SubCropWithId]
 
 class Article(BaseModel):
     crop: str
@@ -47,15 +53,19 @@ class Article(BaseModel):
 
 def set_env():
     global model_name, article_count
-    global crop_prompt_file_name, future_prompt_file_name, aspects_file_name, crops_file_name, authors_file_name, results_directory_name
+    global crop_prompt_file_name, future_prompt_file_name, retried_crop_prompt_file_name, retried_future_prompt_file_name, aspects_file_name, crops_file_name, authors_file_name, results_directory_name
     global generation_time, stop_time
 
     load_dotenv()
+
+    os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
     model_name = os.getenv("MODEL_NAME")
     article_count = int(os.getenv("ARTICLE_COUNT"))
     crop_prompt_file_name = os.getenv("CROP_PROMPT_FILE_NAME")
     future_prompt_file_name = os.getenv("FUTURE_PROMPT_FILE_NAME")
+    retried_crop_prompt_file_name = os.getenv("RETRIED_CROP_PROMPT_FILE_NAME")
+    retried_future_prompt_file_name = os.getenv("RETRIED_FUTURE_PROMPT_FILE_NAME")
     aspects_file_name = os.getenv("ASPECTS_FILE_NAME")
     crops_file_name = os.getenv("CROPS_FILE_NAME")
     authors_file_name = os.getenv("AUTHORS_FILE_NAME")
@@ -113,7 +123,7 @@ def load_aspects():
 def create_redis_session_id():
     return crop.eng + "_" + aspect.eng
 
-def get_redis_history():
+def get_redis_history(redis_session_id) -> BaseChatMessageHistory:
     return RedisChatMessageHistory(
         session_id=redis_session_id,
         redis_url="redis://localhost:6379/0"
@@ -132,13 +142,13 @@ def create_crop_article():
     crop_human_messages = create_crop_human_messages(crop_article_prompt_template, crop, aspect, polarity)
     crop_article_result = chain_with_history.invoke(crop_human_messages)
 
-    return crop_article_result["output_message"]
+    return crop_article_result.content
 
 def create_future_articles(crop_article):
     future_human_messages = create_future_human_messages(future_article_prompt_template, crop, future_polarity, crop_article["body"])
-    future_articles_result = llm.invoke(future_human_messages)
+    future_articles_result = chain_with_history.invoke(future_human_messages)
 
-    return future_articles_result
+    return future_articles_result.content
 
 def get_crop_article(result):
     crop_json_parser = JsonOutputParser(pydantic_object=CropArticle)
@@ -150,16 +160,31 @@ def get_future_articles(result):
     
     return future_json_parser.parse(result)
 
-def create_article():
+def create_article(crop_article, future_articles):
     future_articles_with_author = []
     for future_article in future_articles["future_articles"]:
+        # sub crop
+        sub_crops = []
+        for sub_crop in future_article["sub_crops"]:
+            name = sub_crop["name"]
+            # validate and translate crop
+            english_name = translate_english(name)
+
+            if english_name:
+                sub_crop_with_id = SubCropWithId(
+                    id=english_name,
+                    name=name,
+                    change_rate=sub_crop["change_rate"]
+                )
+                sub_crops.append(sub_crop_with_id)
+
         future_article_with_author = FutureArticleWithAuthor(
             title=future_article["title"],
             body=future_article["body"],
             author=random.choice(authors),
             change_rate=future_article["change_rate"],
             spawn_rate=future_article["spawn_rate"],
-            sub_crops=future_article["sub_crops"]
+            sub_crops=sub_crops
         )
         future_articles_with_author.append(future_article_with_author)
 
@@ -171,6 +196,13 @@ def create_article():
         author=random.choice(authors),
         future_articles=future_articles_with_author
     )
+
+def translate_english(crop_kor):
+    for crop in crops:
+        if crop_kor == crop.kor:
+            return crop.eng
+    
+    return None
 
 def save_articles(num):
     saved_directory = f"{results_directory_name}/{crop.eng}"
@@ -206,60 +238,106 @@ if __name__ == "__main__":
     load_aspects()
 
     # create client
-    llm = Ollama(model=model_name)
-    chain = RunnableParallel({"output_message": llm})
+    llm = ChatOpenAI(
+        temperature = 0.5,
+        model_name = model_name
+    )
 
     for crop in crops:
         for aspect in aspects:
             print(f"start {crop.eng}: {aspect.eng}")
 
-            redis_session_id = create_redis_session_id()
+            # initialize prompt message
+            crop_article_prompt_template = load_prompt(crop_prompt_file_name)
+            future_article_prompt_template = load_prompt(future_prompt_file_name)
+
+            crop_redis_session_id = create_redis_session_id()
+            future_redis_session_id = crop_redis_session_id + "_future"
 
             chain_with_history = RunnableWithMessageHistory(
-                chain,
+                llm,
                 get_redis_history
             )
-
-            articles = []
 
             # create articles
             last_count = article_count // 10
             mid_count = article_count // 2
-            cur_time = 0
             for num in range(0, last_count):
                 if is_existed_articles(num):
                     print(f"pass {crop.eng}: {aspect.eng} - {num}")
                     continue
 
+                crop_articles = []
                 articles = []
 
                 start = num * 10 + 1
                 end = num * 10 + 11
-                for count in range(start, end):
+                # create crop article
+                count = start
+                while count < end:
                     polarity = "가격이 증가하는"
-                    future_polarity = "급격한 증가"
                     if count > mid_count:
                         polarity = "가격이 감소하는"
-                        future_polarity = "급격한 감소"
 
                     try:
-                        crop_article, future_articles = create_crop_future_articles()
+                        crop_article_result = create_crop_article()
+                        crop_article = get_crop_article(crop_article_result)
 
-                        articles.append(create_article())
+                        crop_articles.append(crop_article)
+
+                        # modify crop aritcle prompt
+                        if count > 1:
+                            crop_article_prompt_template = load_prompt(retried_crop_prompt_file_name)
+                        
+                        count += 1
                     except Exception as e:
                         print("An error occurred during article generation, retrying!")
                         count -= 1
 
-                    print(f"[{count}] {redis_session_id}: {crop_article["title"]}")
+                print(f"success article about {crop.eng}")
+
+                #create future article
+                count = start
+                while count < end:
+                    crop_article = crop_articles[count - start]
+                    future_polarity = "급격한 증가"
+                    if count > mid_count:
+                        future_polarity = "급격한 감소"
+
+                    try:
+                        future_articles_result = create_future_articles(crop_article)
+                        future_articles = get_future_articles(future_articles_result)
+
+                        articles.append(create_article(crop_article, future_articles))
+                        
+                        print(f"[{count}] {crop_redis_session_id}: {crop_article["title"]}")
+
+                        # modify future article prompt
+                        if count > 1:
+                            future_article_prompt_template = load_prompt(retried_future_prompt_file_name)
+
+                        count += 1
+                    except Exception as e:
+                        print("An error occurred during article generation, retrying!")
+                        count -= 1
                 
                 save_articles(num)
 
                 print(f"success saving {crop.eng}/{aspect.eng}_{num}.txt")
 
-                cur_time += 1
-                if cur_time == generation_time:
-                    print(f"stop for {stop_time} sec")
-                    time.sleep(stop_time)
-                    print(f"restart")
+        is_continued = True
+        while True:
+            user_input = input("Do you want to countinue? (y/n)").lower()
+        
+            if user_input == 'y':
+                print("continue...")
+                break
+            elif user_input == 'n':
+                is_continued = False
+                print("Exiting the program...")
+                break
+            else:
+                print("Invalid input. Please enter y or n")
 
-                    cur_time = 0
+        if not is_continued:
+            break

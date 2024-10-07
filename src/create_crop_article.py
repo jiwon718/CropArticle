@@ -1,25 +1,25 @@
 from langchain.output_parsers import PydanticOutputParser
 from langchain.schema import HumanMessage
 from langchain_core.prompts import PromptTemplate
-from langchain_core.pydantic_v1 import BaseModel, Field, validator
+from pydantic import BaseModel, validator
 
 class CropArticle(BaseModel):
-    title: str = Field(description="재목")
-    body: str = Field(description="본문")
+    title: str
+    body: str
 
     @validator("title")
-    def validate_title(cls, field):
-        if not field or field.strip() == "":
+    def validate_title(cls, value):
+        if not value or value.strip() == "":
             raise ValueError("crop article title must not be empty")
         
-        return field
+        return value
     
     @validator("body")
-    def validate_body(cls, field):
-        if not field or field.strip() == "":
+    def validate_body(cls, value):
+        if not value or value.strip() == "":
             raise ValueError("crop article body must not be empty")
         
-        return field
+        return value
 
 # create prompt template
 def create_prompt(template):

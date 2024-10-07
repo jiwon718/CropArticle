@@ -1,71 +1,71 @@
 from langchain.output_parsers import PydanticOutputParser, CommaSeparatedListOutputParser
 from langchain.schema import HumanMessage
 from langchain_core.prompts import PromptTemplate
-from langchain_core.pydantic_v1 import BaseModel, Field, validator
+from pydantic import BaseModel, validator
 from typing import List
 
 class SubCrop(BaseModel):
-    name: str = Field(description="작물명")
-    change_rate: float = Field(description="등락률")
+    name: str
+    change_rate: float
 
     @validator("name")
-    def validate_name(cls, field):
-        if not field or field.strip() == "":
+    def validate_name(cls, value):
+        if not value or value.strip() == "":
             raise ValueError("sub crop name not be empty")
         
-        return field
+        return value
     
     @validator("change_rate")
-    def validate_change_rate(cls, field):
-        if field is None:
+    def validate_change_rate(cls, value):
+        if value is None:
             raise ValueError("sub crop change rate not be empty")
-        elif abs(field) < 0:
-            field = field * 100
+        elif abs(value) < 0:
+            value = value * 100
         
-        return field
+        return value
 
 class FutureArticle(BaseModel):
-    title: str = Field(description="제목")
-    body: str = Field(description="본문")
-    change_rate: float = Field(description="등략률")
-    spawn_rate: float = Field(description="등장률")
-    sub_crops: List[SubCrop] = Field(description="관련 작물 목록")
+    title: str
+    body: str
+    change_rate: float
+    spawn_rate: float
+    sub_crops: List[SubCrop]
 
     @validator("title")
-    def validate_title(cls, field):
-        if not field or field.strip() == "":
+    def validate_title(cls, value):
+        if not value or value.strip() == "":
             raise ValueError("future article title not be empty")
         
-        return field
+        return value
     
     @validator("body")
-    def validate_body(cls, field):
-        if not field or field.strip() == "":
+    def validate_body(cls, value):
+        if not value or value.strip() == "":
             raise ValueError("future article body not be empty")
         
-        return field
+        return value
     
     @validator("change_rate")
-    def validate_change_rate(cls, field):
-        if field is None:
+    def validate_change_rate(cls, value):
+        if value is None:
             raise ValueError("future article change rate not be empty")
-        elif abs(field) < 0:
+        elif abs(value) < 0:
             print("future article change rate")
-            field = field * 100
+            value = value * 100
         
-        return field
+        return value
     
     @validator("spawn_rate")
-    def validate_spawn_rate(cls, field):
-        if field is None:
+    def validate_spawn_rate(cls, value):
+        if value is None:
             raise ValueError("future article spawn rate not be empty")
-        elif abs(field) < 0:
-            field = field * 100
+        elif abs(value) < 0:
+            value = value * 100
         
-        return field
+        return value
 
 class FutureArticles(BaseModel):
-    future_articles: List[FutureArticle] = Field(description="결과 기사 목록")
+    future_articles: List[FutureArticle]
 
 # create prompt template
 def create_prompt(template):
